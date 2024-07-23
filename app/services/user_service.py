@@ -1,3 +1,4 @@
+import re
 from builtins import Exception, bool, classmethod, int, str
 from datetime import datetime, timezone
 import secrets
@@ -15,11 +16,27 @@ from uuid import UUID
 from app.services.email_service import EmailService
 from app.models.user_model import UserRole
 import logging
+from fastapi import HTTPException
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+def validate_password(password: str):
+    if not re.match(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$', password):
+        raise HTTPException(
+            status_code=400, 
+            detail='Password must be at least 8 characters long and include an uppercase letter, a lowercase letter, a number, and a special character.'
+        )
+    
+def validate_nickname(nickname: str):
+    if not re.match(r'^[\w-]+$', nickname):
+        raise HTTPException(
+            status_code=400,
+            detail="Nickname must contain only alphanumeric characters, underscores, and hyphens."
+        )
+
 class UserService:
+
     @classmethod
     async def _execute_query(cls, session: AsyncSession, query):
         try:
@@ -53,47 +70,74 @@ class UserService:
     async def create(cls, session: AsyncSession, user_data: Dict[str, str], email_service: EmailService) -> Optional[User]:
         try:
             validated_data = UserCreate(**user_data).model_dump()
-            existing_user = await cls.get_by_email(session, validated_data['email'])
-            if existing_user:
+            existing_user_by_email = await cls.get_by_email(session, validated_data['email'])
+            if existing_user_by_email:
                 logger.error("User with given email already exists.")
-                return None
+                raise HTTPException(status_code=400, detail="User with given email already exists.")
+        
+            existing_user_by_nickname = await cls.get_by_nickname(session, validated_data['nickname'])
+            if existing_user_by_nickname:
+                logger.error("User with given nickname already exists.")
+                raise HTTPException(status_code=400, detail="User with given nickname already exists.")
+
+            validate_nickname(validated_data['nickname'])
+            validate_password(validated_data['password'])
+
             validated_data['hashed_password'] = hash_password(validated_data.pop('password'))
             new_user = User(**validated_data)
             new_user.verification_token = generate_verification_token()
-            new_nickname = generate_nickname()
-            while await cls.get_by_nickname(session, new_nickname):
-                new_nickname = generate_nickname()
-            new_user.nickname = new_nickname
+        
             session.add(new_user)
             await session.commit()
             await email_service.send_verification_email(new_user)
-            
+        
             return new_user
         except ValidationError as e:
             logger.error(f"Validation error during user creation: {e}")
-            return None
+            raise HTTPException(status_code=422, detail="Validation error: " + str(e))
 
     @classmethod
     async def update(cls, session: AsyncSession, user_id: UUID, update_data: Dict[str, str]) -> Optional[User]:
         try:
-            # validated_data = UserUpdate(**update_data).dict(exclude_unset=True)
             validated_data = UserUpdate(**update_data).dict(exclude_unset=True)
 
+            if 'email' in validated_data:
+                existing_user = await cls.get_by_email(session, validated_data['email'])
+                if existing_user and existing_user.id != user_id:
+                    logger.error("User with given email already exists.")
+                    raise HTTPException(status_code=422, detail="User with given email already exists.")
+
+            if 'nickname' in validated_data:
+                validate_nickname(validated_data['nickname'])
+                existing_user = await cls.get_by_nickname(session, validated_data['nickname'])
+                if existing_user and existing_user.id != user_id:
+                    logger.error("User with given nickname already exists.")
+                    raise HTTPException(status_code=422, detail="User with given nickname already exists.")
+
             if 'password' in validated_data:
-                validated_data['hashed_password'] = hash_password(validated_data.pop('password'))
-            query = update(User).where(User.id == user_id).values(**validated_data).execution_options(synchronize_session="fetch")
-            await cls._execute_query(session, query)
+                password = validated_data.pop('password')
+                validate_password(password)  # Validate the password
+                validated_data['hashed_password'] = hash_password(password)
+            
+            existing_user = await cls.get_by_id(session, user_id)
+            if not existing_user:
+                logger.error(f"User with ID {user_id} not found.")
+                return None
+            
+            query = (
+                update(User)
+                .where(User.id == user_id)
+                .values(**validated_data)
+                .execution_options(synchronize_session="fetch")
+            )
+            await session.execute(query)
+            await session.commit()
+
             updated_user = await cls.get_by_id(session, user_id)
-            if updated_user:
-                session.refresh(updated_user)  # Explicitly refresh the updated user object
-                logger.info(f"User {user_id} updated successfully.")
-                return updated_user
-            else:
-                logger.error(f"User {user_id} not found after update attempt.")
-            return None
-        except Exception as e:  # Broad exception handling for debugging
-            logger.error(f"Error during user update: {e}")
-            return None
+            return updated_user
+        except ValidationError as e:
+            logger.error(f"Validation error during user update: {e}")
+            raise HTTPException(status_code=422, detail="Validation error: " + str(e))
 
     @classmethod
     async def delete(cls, session: AsyncSession, user_id: UUID) -> bool:
@@ -121,14 +165,17 @@ class UserService:
         user = await cls.get_by_email(session, email)
         if user:
             if user.email_verified is False:
+                logger.warning(f"User {email} has not verified their email.")
                 return None
             if user.is_locked:
+                logger.warning(f"User {email} is locked due to too many failed login attempts.")
                 return None
             if verify_password(password, user.hashed_password):
                 user.failed_login_attempts = 0
                 user.last_login_at = datetime.now(timezone.utc)
                 session.add(user)
                 await session.commit()
+                logger.info(f"User {email} logged in successfully.")
                 return user
             else:
                 user.failed_login_attempts += 1
@@ -136,6 +183,9 @@ class UserService:
                     user.is_locked = True
                 session.add(user)
                 await session.commit()
+                logger.warning(f"User {email} failed to log in. Failed attempts: {user.failed_login_attempts}.")
+        else:
+            logger.warning(f"User {email} not found.")
         return None
 
     @classmethod
