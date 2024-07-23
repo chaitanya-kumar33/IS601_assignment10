@@ -119,3 +119,6 @@ If you have any questions or need assistance, don't hesitate to reach out to you
 Once again, welcome to the Event Manager Company! Let's embark on this exciting journey together and create something remarkable.
 
 Happy coding and happy learning!
+
+
+
