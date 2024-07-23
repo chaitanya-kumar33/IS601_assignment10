@@ -35,7 +35,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     email: EmailStr = Field(..., example="john.doe@example.com")
-    password: str = Field(..., min_length=8, example="Secure*1234")
+    password: str = Field(..., min_length=10, example="Secure*1234")
     nickname: Optional[str] = Field(None, min_length=3, max_length= 20, pattern=r'^[\w-]+$', example="john_doe_456")
 
     @validator('password')
@@ -60,7 +60,7 @@ class UserUpdate(UserBase):
     profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
     linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
     github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
-    password: Optional[constr(min_length=8)] = None
+    password: Optional[constr(min_length=10)] = None
     role: Optional[UserRole] = Field(UserRole.AUTHENTICATED, example="AUTHENTICATED")
 
     @validator('nickname')
