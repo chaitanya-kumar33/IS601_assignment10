@@ -47,7 +47,7 @@ class UserCreate(UserBase):
     @validator('nickname')
     def nickname_characters(cls, value):
         if not re.match(r'^[\w-]+$', value):
-            raise ValueError("Nickname must contain only alphanumeric characters, underscores, and hyphens.")
+            raise ValueError("Nickname must contain only alphanumeric characters, underscores, and hyphens. ")
         return value
     
     

@@ -78,7 +78,7 @@ class UserService:
             existing_user_by_nickname = await cls.get_by_nickname(session, validated_data['nickname'])
             if existing_user_by_nickname:
                 logger.error("User with given nickname already exists.")
-                raise HTTPException(status_code=400, detail="User with given nickname already exists.")
+                raise HTTPException(status_code=422, detail="User with given nickname already exists.")
 
             validate_nickname(validated_data['nickname'])
             validate_password(validated_data['password'])
