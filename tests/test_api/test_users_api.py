@@ -6,6 +6,11 @@ from app.models.user_model import User
 from app.utils.nickname_gen import generate_nickname
 from app.utils.security import hash_password
 from app.services.jwt_service import decode_token  # Import your FastAPI app
+from jose import jwt
+from settings import config
+
+def decode_token(token: str):
+    return jwt.decode(token, config.secret_key, algorithms=[config.algorithm])
 
 # Example of a test function using the async_client fixture
 @pytest.mark.asyncio
@@ -32,7 +37,13 @@ async def test_retrieve_user_access_denied(async_client, verified_user, user_tok
 @pytest.mark.asyncio
 async def test_retrieve_user_access_allowed(async_client, admin_user, admin_token):
     headers = {"Authorization": f"Bearer {admin_token}"}
+    decoded_token = decode_token(admin_token)
+    print(f"Decoded Token: {decoded_token}")
+    print(f"Headers: {headers}")
+    print(f"Admin User ID: {admin_user.id}")
     response = await async_client.get(f"/users/{admin_user.id}", headers=headers)
+    print(f"Response Status Code: {response.status_code}")
+    print(f"Response Content: {response.content}")
     assert response.status_code == 200
     assert response.json()["id"] == str(admin_user.id)
 
@@ -51,14 +62,15 @@ async def test_update_user_email_access_allowed(async_client, admin_user, admin_
     assert response.status_code == 200
     assert response.json()["email"] == updated_data["email"]
 
-
 @pytest.mark.asyncio
-async def test_delete_user(async_client, admin_user, admin_token):
+async def test_delete_user(async_client, admin_user, admin_token, new_admin_token):
     headers = {"Authorization": f"Bearer {admin_token}"}
     delete_response = await async_client.delete(f"/users/{admin_user.id}", headers=headers)
     assert delete_response.status_code == 204
-    # Verify the user is deleted
-    fetch_response = await async_client.get(f"/users/{admin_user.id}", headers=headers)
+
+    # Use a new token to verify the user is deleted
+    new_headers = {"Authorization": f"Bearer {new_admin_token}"}
+    fetch_response = await async_client.get(f"/users/{admin_user.id}", headers=new_headers)
     assert fetch_response.status_code == 404
 
 @pytest.mark.asyncio
@@ -66,10 +78,11 @@ async def test_create_user_duplicate_email(async_client, verified_user):
     user_data = {
         "email": verified_user.email,
         "password": "AnotherPassword123!",
+        "nickname": verified_user.nickname
     }
     response = await async_client.post("/register/", json=user_data)
     assert response.status_code == 400
-    assert "Email already exists" in response.json().get("detail", "")
+    assert "User with given email already exists." in response.json().get("detail", "")
 
 @pytest.mark.asyncio
 async def test_create_user_invalid_email(async_client):
@@ -142,6 +155,7 @@ async def test_login_locked_user(async_client, locked_user):
     response = await async_client.post("/login/", data=urlencode(form_data), headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert response.status_code == 400
     assert "Account locked due to too many failed login attempts." in response.json().get("detail", "")
+
 @pytest.mark.asyncio
 async def test_delete_user_does_not_exist(async_client, admin_token):
     non_existent_user_id = "00000000-0000-0000-0000-000000000000"  # Valid UUID format

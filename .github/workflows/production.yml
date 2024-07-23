@@ -44,7 +44,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
+
+      - name: Create .env file
+        run: |
+          echo "smtp_server=$SMTP_SERVER" >> .env
+          echo "smtp_port=$SMTP_PORT" >> .env
+          echo "smtp_username=$SMTP_USERNAME" >> .env
+          echo "smtp_password=$SMTP_PASSWORD" >> .env
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        
       - name: Run tests with Pytest
         env:
           DATABASE_URL: postgresql+asyncpg://user:password@localhost:5432/myappdb  # Configure the DATABASE_URL environment variable for tests
@@ -70,15 +82,15 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: kaw393939/wis_club_api:${{ github.sha }} # Uses the Git SHA for tagging
+          tags: ca446/is601_assignment10:${{ github.sha }} # Uses the Git SHA for tagging
           platforms: linux/amd64,linux/arm64 # Multi-platform support
-          cache-from: type=registry,ref=kaw393939/wis_club_api:cache
+          cache-from: type=registry,ref=ca446/is601_assignment10:cache
           cache-to: type=inline,mode=max
           
       - name: Scan the Docker image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'kaw393939/wis_club_api:${{ github.sha }}'
+          image-ref: 'ca446/is601_assignment10:${{ github.sha }}'
           format: 'table'
           exit-code: '1' # Fail the job if vulnerabilities are found
           ignore-unfixed: true

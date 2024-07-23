@@ -15,7 +15,7 @@ Fixtures:
 
 # Standard library imports
 from builtins import range
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -36,6 +36,9 @@ from app.utils.security import hash_password
 from app.utils.template_manager import TemplateManager
 from app.services.email_service import EmailService
 from app.services.jwt_service import create_access_token
+import uuid
+
+
 
 fake = Faker()
 
@@ -220,6 +223,7 @@ def user_base_data():
         "full_name": "John Doe",
         "bio": "I am a software engineer with over 5 years of experience.",
         "profile_picture_url": "https://example.com/profile_pictures/john_doe.jpg"
+        ,"nickname":"jd_123_example"
     }
 
 @pytest.fixture
@@ -241,23 +245,79 @@ def user_create_data(user_base_data):
 def user_update_data():
     return {
         "email": "john.doe.new@example.com",
-        "full_name": "John H. Doe",
         "bio": "I specialize in backend development with Python and Node.js.",
-        "profile_picture_url": "https://example.com/profile_pictures/john_doe_updated.jpg"
+        "profile_picture_url": "https://example.com/profile_pictures/john_doe_updated.jpg",
+        "nickname":"jd_123_new_example",
+        "first_name": "John",
+        "last_name": "Doe"
     }
 
 @pytest.fixture
 def user_response_data():
     return {
-        "id": "unique-id-string",
-        "username": "testuser",
+        "id": str(uuid.uuid4()),
+        "nickname": "testuser",
         "email": "test@example.com",
         "last_login_at": datetime.now(),
         "created_at": datetime.now(),
         "updated_at": datetime.now(),
-        "links": []
+        "links": [],
+        "first_name": "John",
+        "last_name": "Doe"
     }
 
 @pytest.fixture
 def login_request_data():
-    return {"username": "john_doe_123", "password": "SecurePassword123!"}
+    return {"email": "john.doe.new@example.com", "password": "SecurePassword123!"}
+
+@pytest.fixture
+async def user_token(db_session: AsyncSession, user: User):
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    token = create_access_token(
+        data={"sub": user.email, "role": str(user.role)}, 
+        expires_delta=access_token_expires
+    )
+    return token
+
+@pytest.fixture
+async def admin_token(db_session: AsyncSession, admin_user: User):
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    token = create_access_token(
+        data={"sub": admin_user.email, "role": str(admin_user.role)}, 
+        expires_delta=access_token_expires
+    )
+    return token
+
+@pytest.fixture
+async def manager_token(db_session: AsyncSession, manager_user: User):
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    token = create_access_token(
+        data={"sub": manager_user.email, "role": str(UserRole.MANAGER)}, 
+        expires_delta=access_token_expires
+    )
+    return token
+
+@pytest.fixture
+async def different_admin_user(db_session: AsyncSession):
+    user = User(
+        nickname="different_admin_user",
+        email="different_admin@example.com",
+        first_name="Different",
+        last_name="Admin",
+        hashed_password="securepassword",
+        role=UserRole.ADMIN,
+        is_locked=False,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    return user
+
+
+@pytest.fixture
+async def new_admin_token(db_session: AsyncSession, different_admin_user: User):
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    token = create_access_token(
+        data={"sub": different_admin_user.email, "role": UserRole.ADMIN.name},
+        expires_delta=access_token_expires
+    )
+    return token

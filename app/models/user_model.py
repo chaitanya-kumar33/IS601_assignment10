@@ -2,11 +2,12 @@ from builtins import bool, int, str
 from datetime import datetime
 from enum import Enum
 import uuid
+import re
 from sqlalchemy import (
     Column, String, Integer, DateTime, Boolean, func, Enum as SQLAlchemyEnum
 )
 from sqlalchemy.dialects.postgresql import UUID, ENUM
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 from app.database import Base
 
 class UserRole(Enum):
@@ -73,6 +74,15 @@ class User(Base):
     verification_token = Column(String, nullable=True)
     email_verified: Mapped[bool] = Column(Boolean, default=False, nullable=False)
     hashed_password: Mapped[str] = Column(String(255), nullable=False)
+
+    @validates('nickname')
+    def validate_nickname(self, key, nickname):
+        """Validate the nickname to ensure it meets the specified criteria."""
+        if not re.match(r'^[\w-]+$', nickname):
+            raise ValueError("Nickname must contain only alphanumeric characters and underscores.")
+        if not (3 <= len(nickname) <= 20):
+            raise ValueError("Nickname must be between 3 and 20 characters long.")
+        return nickname
 
 
     def __repr__(self) -> str:

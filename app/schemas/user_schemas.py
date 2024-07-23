@@ -1,5 +1,5 @@
 from builtins import ValueError, any, bool, str
-from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+from pydantic import BaseModel, EmailStr, Field, validator, root_validator, constr
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -32,10 +32,16 @@ class UserBase(BaseModel):
     linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
     github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
     role: Optional[UserRole] = Field(UserRole.AUTHENTICATED, example="AUTHENTICATED")
+    
+
+    _validate_urls = validator('profile_picture_url', 'linkedin_profile_url', 'github_profile_url', pre=True, allow_reuse=True)(validate_url)
+ 
+    class Config:
+        from_attributes = True
 
 class UserCreate(UserBase):
     email: EmailStr = Field(..., example="john.doe@example.com")
-    password: str = Field(..., min_length=10, example="Secure*1234")
+    password: str = Field(..., min_length=8, example="Secure*1234")
     nickname: Optional[str] = Field(None, min_length=3, max_length= 20, pattern=r'^[\w-]+$', example="john_doe_456")
 
     @validator('password')
@@ -47,10 +53,9 @@ class UserCreate(UserBase):
     @validator('nickname')
     def nickname_characters(cls, value):
         if not re.match(r'^[\w-]+$', value):
-            raise ValueError("Nickname must contain only alphanumeric characters, underscores, and hyphens. ")
+            raise ValueError("Nickname must contain only alphanumeric characters, underscores, and hyphens.")
         return value
-    
-    
+
 class UserUpdate(UserBase):
     email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
     nickname: Optional[str] = Field(None, min_length=3, max_length= 20, pattern=r'^[\w-]+$', example="john_doe_456")
@@ -60,7 +65,7 @@ class UserUpdate(UserBase):
     profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
     linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
     github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
-    password: Optional[constr(min_length=10)] = None
+    password: Optional[constr(min_length=8)] = None
     role: Optional[UserRole] = Field(UserRole.AUTHENTICATED, example="AUTHENTICATED")
 
     @validator('nickname')
@@ -99,7 +104,7 @@ class ErrorResponse(BaseModel):
 
 class UserListResponse(BaseModel):
     items: List[UserResponse] = Field(..., example=[{
-        "id": uuid.uuid4(), "nickname": generate_nickname(), "email": "john.doe@example.com",
+        "id": uuid.uuid4(), "nickname": 'john_doe_456', "email": "john.doe@example.com",
         "first_name": "John", "bio": "Experienced developer", "role": "AUTHENTICATED",
         "last_name": "Doe", "bio": "Experienced developer", "role": "AUTHENTICATED",
         "profile_picture_url": "https://example.com/profiles/john.jpg", 

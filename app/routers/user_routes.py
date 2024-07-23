@@ -33,6 +33,10 @@ from app.services.jwt_service import create_access_token
 from app.utils.link_generation import create_user_links, generate_pagination_links
 from app.dependencies import get_settings
 from app.services.email_service import EmailService
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 settings = get_settings()
@@ -86,6 +90,7 @@ async def update_user(user_id: UUID, user_update: UserUpdate, request: Request, 
     - **user_id**: UUID of the user to update.
     - **user_update**: UserUpdate model with updated user information.
     """
+    logger.info(f"Attempting to update user with ID: {user_id}")
     user_data = user_update.model_dump(exclude_unset=True)
     updated_user = await UserService.update(db, user_id, user_data)
     if not updated_user:
@@ -198,23 +203,6 @@ async def register(user_data: UserCreate, session: AsyncSession = Depends(get_db
     raise HTTPException(status_code=400, detail="Email already exists")
 
 @router.post("/login/", response_model=TokenResponse, tags=["Login and Registration"])
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_db)):
-    if await UserService.is_account_locked(session, form_data.username):
-        raise HTTPException(status_code=400, detail="Account locked due to too many failed login attempts.")
-
-    user = await UserService.login_user(session, form_data.username, form_data.password)
-    if user:
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-
-        access_token = create_access_token(
-            data={"sub": user.email, "role": str(user.role.name)},
-            expires_delta=access_token_expires
-        )
-
-        return {"access_token": access_token, "token_type": "bearer"}
-    raise HTTPException(status_code=401, detail="Incorrect email or password.")
-
-@router.post("/login/", include_in_schema=False, response_model=TokenResponse, tags=["Login and Registration"])
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_db)):
     if await UserService.is_account_locked(session, form_data.username):
         raise HTTPException(status_code=400, detail="Account locked due to too many failed login attempts.")
